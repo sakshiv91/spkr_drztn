@@ -1,0 +1,48 @@
+This is speaker based diarization system using GMM build for the M.tech project.
+~~~~~~~~~~~~~~AUTHOR -> PRATEEK KOTHA(IITM), SAKSHI VERMA (IITM)~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~UNDER THE GUIDANCE OF PROF. HEMA A. MURTHY AND NAUMAN~~~~~~~~~~~~~~~
+~~~~~~~~~~~~DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING(IITM)~~~~~~~~~~~~~~~~
+
+~~~~~~~~~~~~~~~~~~~LAST UPDATED -> AUGUST 4, 2016~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+PREREQUISITE :
+1.	OPENCV	library for gmm training.
+2.	C++ compiler.
+
+
+
+
+
+USAGE:
+1.	Change path to main GMMDiary Folder.
+2.	Go to src Folder.
+3.	Compile the file Stages.cpp using following command.
+
+	g++ -std=c++11 Stages.cpp `pkg-config --libs opencv` -o Stages
+
+4.	Run the file passing various command line arguments.
+
+	./Stages pathToSpeechFolder   featureVectorDimension   initialNumberOfSpeakers 
+	nameOfSpeechFile   initialNumberOfMixtures   segmentationIterationsWithPolling  
+	folderWhereSpeakerDataisPresent  rttmFileNameWithPath  mapFileName nameOfTheMeeting 
+	oneTimeInitialSegmentaionIteration protoFileNameWithPath macroFileNameWithPath 
+
+	Example Run ---->
+
+	./Stages ../speechData/ 19 20 ICSI_20010322-1450_speech.ascii 5 2 speakerData ../../Project/spkr_diarztn/grndTruth/rt04dev/ICSI_20010322-1450.rttm ../speechData/mappings/ICSI_20010322-1450.ascii.map ICSI_20010322-1450 10 ./AlignWithHMM/proto ./AlignWithHMM/macro 
+
+5.	change directory to result directory.
+6.	Run the evaluation script present there as
+
+	perl md-eval-v21.pl -m -afc -c 0.25 -R referenceRTTM -S outputRTTM
+
+	Example Run ---->
+	
+	perl md-eval-v21.pl -m -afc -c 0.25 -R devrttms -S resrttms
+
+7.	Note the speaker errr rate instead of overall speaker diarization error.
+8.	Multiple file can be sent to perl evaluation also by listing all the rttm in
+	both reference and source rttm.
+
+
+

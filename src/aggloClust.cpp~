@@ -1,0 +1,224 @@
+#include "Includes.h" 
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//	Global declarations
+	string path ;
+	int featDim ;
+	vvc speechData ;
+	int initCluster ;
+	int initMixture ;
+	string fileName ;
+	int numFeats ;
+	vvvc clusterData ;
+	vi clusterMixtures ;
+	int segmentationItr ; 
+	vi gmmId ;
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// read whole speech data in vector of vector of double speechData
+
+void readData(vvc &data, string fileName){
+	ifstream infile((fileName).c_str());
+	string s;
+	stringstream ss;
+	int c ;
+	vc feature;
+	while(getline(infile, s)){
+		ss << s;
+		double num;
+		c = 0;
+		fr(i, 0, featDim){
+			ss >> num;
+			feature.push_back(num);
+		}
+		//printv(feature, double);
+		data.push_back(feature);
+		feature.clear();
+		cs(ss);
+	}
+	/*fr(i, 0, data.size()){
+		cout << data[i].size() << endl;
+	}*/
+	//cout << "In data: " << data[0].size() << endl;
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Divide equally initial data amongst all the clusters
+
+void initClusters(){
+	numFeats = speechData.size();
+	int clusterFeatures = numFeats/initCluster ;
+	int count = 0;
+	vvc temp ;
+	fr(i, 0, initCluster){
+		do{
+			temp.push_back(speechData[count++]);
+		}while(count%clusterFeatures != 0);
+		clusterData.push_back(temp);
+		temp.clear();
+	}
+	int rem = numFeats - count;
+	if(rem > 0.6*clusterFeatures){
+		while(count < numFeats){
+			temp.push_back(speechData[count++]);
+			initCluster++;
+		}
+		clusterData.push_back(temp);
+	}
+	else{
+		while(count < numFeats){
+			clusterData[initCluster-1].push_back(speechData[count++]);
+		}
+	}
+	fr(i, 0, initCluster)
+		clusterMixtures.push_back(initMixture);
+	tr(clusterMixtures , it)
+		cout << *it << " "; 
+	fr(i, 0, initCluster)
+		gmmId.push_back(i);
+}
+
+Mat makeData(int clusterId, vvvc &clusterData, vi &gmmIds){
+	vvc iData;
+	fr(i, 0, gmmIds.size()){
+		if(gmmIds[i] == clusterId){
+			fr(j, 0, clusterData[i].size()){
+				iData.push_back(clusterData[i][j]);
+			}
+		}
+	}
+	return d2vecToMat(iData);
+}
+double computeLLH(Ptr<EM> gmm, Mat data){
+	double llh = 0;
+	fr(i, 0, data.size().height){
+		llh += gmm->predict2(data.row(i), noArray())[0];
+	}
+	return llh; // /= data.size().height; Not normalized for BIC
+}
+Ptr<EM> oneGMM(Mat &data, double &llh, int nc){
+        Mat labels, logLikelihoods;
+        double l1;
+        Ptr<EM> gmmmodel = cv::ml::EM::create();
+        gmmmodel->setClustersNumber(nc);
+    	gmmmodel->setCovarianceMatrixType(EM::COV_MAT_DIAGONAL);
+        gmmmodel->setTermCriteria(TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 500, 0.01));
+        gmmmodel->trainEM( data, logLikelihoods, labels, noArray());
+        fr(i, 0, data.size().height){
+                llh = llh + logLikelihoods.at<double>(i);
+        }
+        llh = llh / data.size().height;
+        return gmmmodel;
+}
+
+void updateDts(int s1, int s2, map<int, Ptr<EM>> &gmms, vi &gmmIds, vi &clusterMixs){
+	fr(i, 0, gmmIds.size()){
+		if(gmmIds[i] == s2){
+			gmmIds[i] = s1;
+		}
+	}
+	clusterMixs[s1] += clusterMixs[s2];
+	set<int> s;
+        tr(gmmIds, it){
+                if(s.find(*it) == s.end()){
+                        s.insert(*it);
+                }
+        }
+        auto it = gmms.begin();
+        while(it != gmms.end()){
+                if(s.find(it->first) == s.end()){
+                        auto tempit = it;
+                        it++;
+                        gmms.erase(tempit);
+                        continue;
+                }
+                it++;
+        }
+
+}
+void aggloClust(vvvc &clusterData, map<int, Ptr<EM>> &gmms, vi &gmmIds, vi &clusterMixs){
+	double llh1, llh2, llh3;
+	map<double, pair<int, int>> likelihoods;
+	fr(i, 0, gmmIds.size()){
+		fr(j, i+1, gmmIds.size()){
+			cout << i << " " << j << ": ";
+			Mat probs;
+			Mat data1 = makeData(i, clusterData, gmmIds);
+			Mat data2 = makeData(j, clusterData, gmmIds);
+			llh1 = computeLLH(gmms[i], data1);
+			llh2 = computeLLH(gmms[j], data2);
+			Mat data;
+			vconcat(data1, data2, data);
+			Ptr<EM> gmm = oneGMM(data, llh3, clusterMixtures[i]+clusterMixtures[j]);
+			llh3 = computeLLH(gmm, data);
+			cout << llh1 << " " << llh2 << " " << llh3 << " " << llh3-llh2-llh1 << endl;
+			likelihoods.insert(pair<double, pair<int, int>>(llh3-llh2-llh1, pair<int, int>(i, j)));
+		}
+	}
+	int s1 = likelihoods.begin()->second.first;
+	int s2 = likelihoods.begin()->second.second;
+	//cout << "\n\n\n\n" << likelihoods.begin()->first << " " << likelihoods.begin()->second.first << " " << likelihoods.begin()->second.second << endl;
+	cout << s1 << " " << s2 << endl;
+	updateDts(s1, s2, gmms, gmmIds, clusterMixs);
+	printv(gmmIds, int);
+	printv(clusterMixs, int);
+	tr(gmms, it){
+		cout << it->first << endl;
+	}
+
+}
+
+void gmmTrain(vector<Ptr<EM>> &gmms, vc &negLogLikelihoods){
+	int size = clusterData.size();
+	double llh;
+	fr(i, 0, size){
+		Mat oneClusterData = d2vecToMat(clusterData[i]);
+		Ptr<EM> gmm = oneGMM(oneClusterData, llh, clusterMixtures[i]);
+		//cout << "Cluster " << i << ": " << llh << endl;
+		negLogLikelihoods.push_back(llh);
+		gmms.push_back(gmm);
+	}
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+int main(int argc, char* argv[]){
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//	GOD BLESS US
+//	We are assuming we have speech features.
+//	Command line arguments
+	path = argv[1];
+	featDim = ston(argv[2]);
+	initCluster = ston(argv[3]);
+	fileName = argv[4];
+	initMixture = ston(argv[5]);
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	readData(speechData, fileName);
+	initClusters();
+	vector<Ptr<EM>> gmms;
+	vc likelihoods;
+	gmmTrain(gmms, likelihoods);
+	map<int, Ptr<EM> > tgmms;
+	vi gmmIds(gmms.size(), 0);
+	fr(i, 0, gmms.size()){
+		tgmms.insert(pair<int, Ptr<EM>>(i, gmms[i]));
+		gmmIds[i] = i;
+	}
+	printv(gmmIds, int);
+	/*tr(tgmms, it){
+		cout << it->first << endl;
+		cout << it->second->getMeans() << endl;
+	}*/
+	//aggloClust(clusterData, tgmms, gmmIds, clusterMixtures);
+}
+
+
+
+
+
+
+
+
+
+
+
+

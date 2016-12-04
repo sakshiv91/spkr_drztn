@@ -1,0 +1,95 @@
+//extract speech features from data
+#include<iostream>
+#include<fstream>
+#include<string>
+#include<sstream>
+#include<stdlib.h>
+#include <dirent.h>
+#include<sys/types.h>
+#include<ctype.h>
+#include<map>
+using namespace std;
+void cs(stringstream &ss){
+	ss.str("");
+	ss.clear();
+}
+int main(int argc, char *argv[]){
+	ifstream infile1, infile2;
+	ofstream outfile;
+	map<int , int > mapping ;
+	map<int, int> scp;
+	string filelist = argv[1];
+	stringstream ss;
+	string s, fileName;
+	ifstream infile(filelist);
+	while(getline(infile, fileName)){
+		cout << "Processing File: " << fileName << endl;
+		infile1.open(("../speechData/asciis/"+fileName+".ascii").c_str());
+		outfile.open(("../speechData/ascii_speechs/"+fileName+".speech").c_str());
+		infile2.open(("../speechData/scps/"+fileName+".scp").c_str());
+		
+		string s1;
+		mapping.clear();
+		scp.clear();
+
+		int a;
+		int b;
+		int c;
+		int beg,end;
+		int lastbeg, lastend;
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+		while(getline(infile2, s)){
+			a = s.find('[');
+			b = s.find(']');
+			c = s.find(',');
+			beg = atoi(s.substr(a+1, c-a-1).c_str());
+			end = atoi(s.substr(c+1, b-c-1).c_str());
+			if(!scp.empty()){
+				auto p = scp.end();
+				p--;
+				if(beg <= p -> second && end > p -> second){
+					//replace the last pair
+					scp[p-> first] = end;
+				}
+				else if(beg > p-> second){
+					// insert in the scp map
+					scp.insert(pair<int, int>(beg, end));
+				}
+			}
+			else
+				scp.insert(pair<int, int>(beg, end));
+		}
+			infile2.close();
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+		int fileOutCount = 1;
+		for(auto it = scp.begin(); it!= scp.end(); it++){
+			int beg = it -> first;	
+			int end = it -> second;
+			int count = 0;
+			while((count < beg) && getline(infile1, s1)){
+				count++;
+			}
+			while((count <= end ) && getline(infile1, s1) ){
+				outfile << s1 <<endl;
+				mapping.insert(pair<int, int>(count, fileOutCount));
+				fileOutCount++;
+				count++;
+			}	
+			infile1.seekg(0, ios::beg);
+		}
+		infile1.close();
+		outfile.close();
+		outfile.open(("../speechData/mappings/"+fileName+".map").c_str());
+		outfile<< "Actual speech file number"<< "	"<<"Speech region line number"<< endl;
+		for(auto it = mapping.begin(); it!=mapping.end(); it++)
+			outfile << it -> first << "	" << it -> second<< endl;
+		outfile.close();
+		outfile.open(("../speechData/nonoverscps/"+fileName+".nonoverscp").c_str());
+		for(auto it = scp.begin(); it!= scp.end(); it++){
+			outfile << it -> first << " " << it -> second << endl; 
+		}
+		outfile.close();
+	}
+	cout << "Finished." << endl; 
+	return 0;
+}
